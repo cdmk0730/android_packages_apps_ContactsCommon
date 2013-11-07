@@ -13,13 +13,8 @@
      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
      See the License for the specific language governing permissions and
      limitations under the License.
- -->
-<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <!-- CAF strings -->
-    <string name="manage_sim_contacts">Contacten beheren op simkaart</string>
-    <string name="export_to_sim">Exporteren naar simkaart</string>
-    <string name="Import_All">Contacten importeren van alle simkaarten</string>
-    <string name="ok">OK</string>
-    <string name="cancel">Annuleren</string>
-    <string name="select_sim">Simkaart selecteren</string>
+-->
+<resources>
+    <!-- Do not translate. Action string for selecting SIM for importing contacts -->
+    <string name="import_from_sim">Import from SIM card</string>
 </resources>
