@@ -258,6 +258,9 @@ public abstract class BaseAccountType extends AccountType {
                 10, true));
         kind.iconAltRes = R.drawable.ic_text_holo_light;
         kind.iconAltDescriptionRes = R.string.sms;
+        // IPCall
+        kind.iconAltThirdlyRes = R.drawable.ic_ipcall_holo_light;
+        kind.iconAltThirdlyDescriptionRes = R.string.ipcall;
         kind.actionHeader = new PhoneActionInflater();
         kind.actionAltHeader = new PhoneActionAltInflater();
         kind.actionBody = new SimpleInflater(Phone.NUMBER);
@@ -1029,6 +1032,9 @@ public abstract class BaseAccountType extends AccountType {
 
             kind.iconAltRes = R.drawable.ic_text_holo_light;
             kind.iconAltDescriptionRes = R.string.sms;
+            // IPCall
+            kind.iconAltThirdlyRes = R.drawable.ic_ipcall_holo_light;
+            kind.iconAltThirdlyDescriptionRes = R.string.ipcall;
             kind.actionAltHeader = new PhoneActionAltInflater();
 
             kind.fieldList.add(new EditField(Phone.NUMBER, R.string.phoneLabelsGroup, FLAGS_PHONE));

@@ -45,6 +45,11 @@ public final class DataKind {
     public int titleRes;
     public int iconAltRes;
     public int iconAltDescriptionRes;
+
+    // IPCall
+    public int iconAltThirdlyRes;
+    public int iconAltThirdlyDescriptionRes;
+
     public int weight;
     public boolean editable;
 
