@@ -100,9 +100,11 @@ public class DefaultContactListAdapter extends ContactListAdapter {
             }
             boolean isAirMode = MoreContactUtils.isAPMOnAndSIMPowerDown(getContext());
 
-            if (isAirMode) {
-                appendUriQueryParameterWithoutSim(loader, RawContacts.ACCOUNT_TYPE,
-                        SimAccountType.ACCOUNT_TYPE);
+            if (isAirMode
+                    || (null != filter && filter.filterType ==
+                        ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM)) {
+                appendUriQueryParameterWithoutSim(loader,
+                        RawContacts.ACCOUNT_TYPE, SimAccountType.ACCOUNT_TYPE);
             } else {
                 // Do not show contacts when SIM card is disabled
                 String disabledSimFilter = MoreContactUtils.getDisabledSimFilter();
@@ -220,6 +222,11 @@ public class DefaultContactListAdapter extends ContactListAdapter {
                 // We use query parameters for account filter, so no selection to add here.
                 break;
             }
+            case ContactListFilter.FILTER_TYPE_ALL_WITHOUT_SIM: {
+            appendUriQueryParameterWithoutSim(loader, RawContacts.ACCOUNT_TYPE,
+                    SimAccountType.ACCOUNT_TYPE);
+            break;
+            }
         }
         loader.setSelection(selection.toString());
         loader.setSelectionArgs(selectionArgs.toArray(new String[0]));
@@ -241,7 +248,8 @@ public class DefaultContactListAdapter extends ContactListAdapter {
         if (isQuickContactEnabled()) {
             bindQuickContact(view, partition, cursor, ContactQuery.CONTACT_PHOTO_ID,
                     ContactQuery.CONTACT_PHOTO_URI, ContactQuery.CONTACT_ID,
-                    ContactQuery.CONTACT_LOOKUP_KEY, ContactQuery.CONTACT_DISPLAY_NAME);
+                    ContactQuery.CONTACT_LOOKUP_KEY, ContactQuery.CONTACT_DISPLAY_NAME,
+                    ContactQuery.CONTACT_ACCOUNT_TYPE, ContactQuery.CONTACT_ACCOUNT_NAME);
         } else {
             if (getDisplayPhotos()) {
                 bindPhoto(view, partition, cursor);
@@ -249,6 +257,9 @@ public class DefaultContactListAdapter extends ContactListAdapter {
         }
 
         bindNameAndViewId(view, cursor);
+        if (isQuickCallButtonEnabled()) {
+            bindQuickCallView(view, cursor);
+        }
         bindPresenceAndStatusMessage(view, cursor);
 
         if (isSearchMode()) {

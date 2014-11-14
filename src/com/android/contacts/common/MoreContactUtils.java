@@ -1,5 +1,9 @@
 /*
+ * Copyright (C) 2013-2014, The Linux Foundation. All Rights Reserved.
+ * Not a Contribution.
+ *
  * Copyright (C) 2012 The Android Open Source Project
+ *
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,24 +25,54 @@ import android.accounts.Account;
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.ContentProviderOperation;
+import android.content.ContentProviderResult;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.ComponentName;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.OperationApplicationException;
+import android.content.res.Resources;
+import android.database.Cursor;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemProperties;
+import android.os.RemoteException;
+import android.os.ServiceManager;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
 import android.provider.ContactsContract;
+import android.provider.ContactsContract.CommonDataKinds.Email;
+import android.provider.ContactsContract.CommonDataKinds.Phone;
+import android.provider.ContactsContract.CommonDataKinds.StructuredName;
+import android.provider.ContactsContract.Data;
+import android.provider.ContactsContract.RawContacts;
 import android.provider.Settings;
 import android.telephony.SubscriptionManager;
 import android.telephony.PhoneNumberUtils;
+import android.telecom.PhoneAccountHandle;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.view.LayoutInflater;
+import android.util.Log;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import com.android.contacts.common.model.account.AccountType;
+import com.android.contacts.common.model.account.SimAccountType;
+import com.android.internal.telephony.uicc.AdnRecord;
+import com.android.internal.telephony.uicc.IccConstants;
 import com.android.internal.telephony.IIccPhoneBook;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Shared static contact utility methods.
@@ -46,7 +80,30 @@ import com.android.internal.telephony.IIccPhoneBook;
 public class MoreContactUtils {
 
     private static final String WAIT_SYMBOL_AS_STRING = String.valueOf(PhoneNumberUtils.WAIT);
+    private static final boolean DBG = true;
+    private static final String TAG = "MoreContactUtils";
+    public static final int MAX_LENGTH_NAME_IN_SIM = 14;
+    public static final int MAX_LENGTH_NAME_WITH_CHINESE_IN_SIM = 6;
+    public static final int MAX_LENGTH_NUMBER_IN_SIM = 20;
+    public static final int MAX_LENGTH_EMAIL_IN_SIM = 40;
+    private static final int NAME_POS = 0;
+    private static final int NUMBER_POS = 1;
+    private static final int EMAIL_POS = 2;
+    private static final int ANR_POS = 3;
+    private static final String PHONEBOOK = "simphonebook";
+    public static final String[] MULTI_SIM_NAME = { "perferred_name_sub1",
+            "perferred_name_sub2" };
 
+    public static final String PREFERRED_SIM_ICON_INDEX = "preferred_sim_icon_index";
+    public static final String[] IPCALL_PREFIX = { "ip_call_prefix_sub1",
+            "ip_call_prefix_sub2" };
+    public final static int[] IC_SIM_PICTURE = {
+        R.drawable.ic_contact_picture_sim_1,
+        R.drawable.ic_contact_picture_sim_2,
+        R.drawable.ic_contact_picture_sim_personal,
+        R.drawable.ic_contact_picture_sim_business,
+        R.drawable.ic_contact_picture_sim_primary
+   };
     /**
      * Returns true if two data with mimetypes which represent values in contact entries are
      * considered equal for collapsing in the GUI. For caller-id, use
@@ -248,9 +305,6 @@ public class MoreContactUtils {
         StringBuilder simFilter = new StringBuilder("");
 
         for (int i = 0; i < count; i++) {
-            if (!TelephonyManager.getDefault().hasIccCard(i)) {
-                continue;
-            }
             if (TelephonyManager.SIM_STATE_UNKNOWN == TelephonyManager
                     .getDefault().getSimState(i)) {
                 simFilter.append(getSimAccountName(i) + ',');
@@ -260,12 +314,46 @@ public class MoreContactUtils {
         return simFilter.toString();
     }
 
+    public static boolean isShowOperator(Context context) {
+        return context.getResources().getBoolean(R.bool.config_show_operator);
+    }
+
+    public static boolean isShowOperator(Resources resources) {
+        return resources.getBoolean(R.bool.config_show_operator);
+    }
+
+    public static boolean sdCardExist(Context context) {
+        boolean ret = false;
+        StorageManager mStorageManager = (StorageManager) context
+                .getSystemService(Context.STORAGE_SERVICE);
+        if (mStorageManager.getVolumeState(getSDPath(context)).equals(
+                android.os.Environment.MEDIA_MOUNTED)) {
+            ret = true;
+        }
+        return ret;
+    }
+
+    public static String getSDPath(Context context) {
+        String sd = null;
+        StorageManager mStorageManager = (StorageManager) context
+                .getSystemService(Context.STORAGE_SERVICE);
+        StorageVolume[] volumes = mStorageManager.getVolumeList();
+        for (int i = 0; i < volumes.length; i++) {
+            if (volumes[i].isRemovable() && volumes[i].allowMassStorage()
+                    && !volumes[i].isPrimary()
+                    && volumes[i].getDescription(context).contains("SD")) {
+                sd = volumes[i].getPath();
+            }
+        }
+        return sd;
+    }
+
     public static boolean isAPMOnAndSIMPowerDown(Context context) {
         if (context == null) {
             return false;
         }
         boolean isAirPlaneMode = Settings.System.getInt(context.getContentResolver(),
-                Settings.System.AIRPLANE_MODE_ON, 0) == 1;
+                Settings.Global.AIRPLANE_MODE_ON, 0) == 1;
         boolean isSIMPowerDown = SystemProperties.getInt(
                 "persist.radio.apm_sim_not_pwdn", 0) == 0;
         return isAirPlaneMode && isSIMPowerDown;
@@ -399,4 +487,421 @@ public class MoreContactUtils {
         }
         return count;
     }
+
+    public static boolean insertToPhone(String[] values, final ContentResolver resolver,int sub) {
+        Account account = getAcount(sub);
+        final String name = values[NAME_POS];
+        final String phoneNumber = values[NUMBER_POS];
+        final String emailAddresses = values[EMAIL_POS];
+        final String anrs = values[ANR_POS];
+
+        final String[] emailAddressArray;
+        final String[] anrArray;
+        boolean success = true;
+        if (!TextUtils.isEmpty(emailAddresses)) {
+            emailAddressArray = emailAddresses.split(",");
+        } else {
+            emailAddressArray = null;
+        }
+        if (!TextUtils.isEmpty(anrs)) {
+            anrArray = anrs.split(",");
+        } else {
+            anrArray = null;
+        }
+        if (DBG) {
+            Log.d(TAG, "insertToPhone: name= " + name + ", phoneNumber= " + phoneNumber
+                    + ", emails= " + emailAddresses + ", anrs= " + anrs + ", account= " + account);
+        }
+        final ArrayList<ContentProviderOperation> operationList =
+                new ArrayList<ContentProviderOperation>();
+        ContentProviderOperation.Builder builder = ContentProviderOperation
+                .newInsert(RawContacts.CONTENT_URI);
+        builder.withValue(RawContacts.AGGREGATION_MODE, RawContacts.AGGREGATION_MODE_DISABLED);
+
+        if (account != null) {
+            builder.withValue(RawContacts.ACCOUNT_NAME, account.name);
+            builder.withValue(RawContacts.ACCOUNT_TYPE, account.type);
+        }
+        operationList.add(builder.build());
+
+        // do not allow empty value insert into database.
+        if (!TextUtils.isEmpty(name)) {
+            builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
+            builder.withValueBackReference(StructuredName.RAW_CONTACT_ID, 0);
+            builder.withValue(Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE);
+            builder.withValue(StructuredName.DISPLAY_NAME, name);
+            operationList.add(builder.build());
+        }
+
+        if (!TextUtils.isEmpty(phoneNumber)) {
+            builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
+            builder.withValueBackReference(Phone.RAW_CONTACT_ID, 0);
+            builder.withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE);
+            builder.withValue(Phone.TYPE, Phone.TYPE_MOBILE);
+            builder.withValue(Phone.NUMBER, phoneNumber);
+            builder.withValue(Data.IS_PRIMARY, 1);
+            operationList.add(builder.build());
+        }
+
+        if (anrArray != null) {
+            for (String anr : anrArray) {
+                if (!TextUtils.isEmpty(anr)) {
+                    builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
+                    builder.withValueBackReference(Phone.RAW_CONTACT_ID, 0);
+                    builder.withValue(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE);
+                    builder.withValue(Phone.TYPE, Phone.TYPE_HOME);
+                    builder.withValue(Phone.NUMBER, anr);
+                    operationList.add(builder.build());
+                }
+            }
+        }
+
+        if (emailAddressArray != null) {
+            for (String emailAddress : emailAddressArray) {
+                if (!TextUtils.isEmpty(emailAddress)) {
+                    builder = ContentProviderOperation.newInsert(Data.CONTENT_URI);
+                    builder.withValueBackReference(Email.RAW_CONTACT_ID, 0);
+                    builder.withValue(Data.MIMETYPE, Email.CONTENT_ITEM_TYPE);
+                    builder.withValue(Email.TYPE, Email.TYPE_MOBILE);
+                    builder.withValue(Email.ADDRESS, emailAddress);
+                    operationList.add(builder.build());
+                }
+            }
+        }
+
+        try {
+            ContentProviderResult[] results =
+                    resolver.applyBatch(ContactsContract.AUTHORITY, operationList);
+            for (ContentProviderResult result: results) {
+                if (result.uri == null) {
+                    success = false;
+                    break;
+                }
+            }
+            return success;
+        } catch (RemoteException e) {
+            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
+            return false;
+        } catch (OperationApplicationException e) {
+            Log.e(TAG, String.format("%s: %s", e.toString(), e.getMessage()));
+            return false;
+        }
+    }
+
+    public static Uri insertToCard(Context context, String name, String number, String emails,
+            String anrNumber, int subscription) {
+        // add the max count limit of Chinese code or not
+        if (!TextUtils.isEmpty(name)) {
+            final int maxLen = hasChinese(name) ? MAX_LENGTH_NAME_WITH_CHINESE_IN_SIM
+                    : MAX_LENGTH_NAME_IN_SIM;
+            if (name.length() > maxLen) {
+                name = name.substring(0, maxLen);
+            }
+        }
+        Uri result;
+        ContentValues mValues = new ContentValues();
+        mValues.clear();
+        mValues.put(SimContactsConstants.STR_TAG, name);
+        if (!TextUtils.isEmpty(number)) {
+            number = PhoneNumberUtils.stripSeparators(number);
+            if (number.length() > MAX_LENGTH_NUMBER_IN_SIM) {
+                number = number.substring(0, MAX_LENGTH_NUMBER_IN_SIM);
+            }
+
+            mValues.put(SimContactsConstants.STR_NUMBER, number);
+        }
+        if (!TextUtils.isEmpty(emails)) {
+            mValues.put(SimContactsConstants.STR_EMAILS, emails);
+        }
+        if (!TextUtils.isEmpty(anrNumber)) {
+            anrNumber = PhoneNumberUtils.stripSeparators(anrNumber);
+            mValues.put(SimContactsConstants.STR_ANRS, anrNumber);
+        }
+
+        SimContactsOperation mSimContactsOperation = new SimContactsOperation(context);
+        result = mSimContactsOperation.insert(mValues, subscription);
+
+        if (result != null) {
+            // we should import the contact to the sim account at the same time.
+            String[] value = new String[] {
+                    name, number, emails, anrNumber
+            };
+            insertToPhone(value, context.getContentResolver(),subscription);
+        } else {
+            Log.e(TAG, "export contact: [" + name + ", " + number + ", " + emails + "] to slot "
+                    + subscription + " failed");
+        }
+        return result;
+    }
+
+    public static Account getAcount(int sub) {
+        Account account = null;
+        if (TelephonyManager.getDefault().isMultiSimEnabled()) {
+            if (sub == SimContactsConstants.SUB_1) {
+                account = new Account(SimContactsConstants.SIM_NAME_1,
+                        SimContactsConstants.ACCOUNT_TYPE_SIM);
+            } else if (sub == SimContactsConstants.SUB_2) {
+                account = new Account(SimContactsConstants.SIM_NAME_2,
+                        SimContactsConstants.ACCOUNT_TYPE_SIM);
+            }
+        } else {
+            if (sub == SimContactsConstants.SUB_1) {
+                account = new Account(SimContactsConstants.SIM_NAME,
+                        SimContactsConstants.ACCOUNT_TYPE_SIM);
+            }
+        }
+        if (account == null) {
+            account = new Account(SimContactsConstants.PHONE_NAME,
+                    SimContactsConstants.ACCOUNT_TYPE_PHONE);
+        }
+        return account;
+    }
+
+    public static int getEnabledSimCount() {
+        int mPhoneCount = TelephonyManager.getDefault().getPhoneCount();
+        int enabledSimCount = 0;
+        for (int i = 0; i < mPhoneCount; i++) {
+            if (TelephonyManager.SIM_STATE_READY == TelephonyManager
+                    .getDefault().getSimState(i)) {
+                enabledSimCount++;
+            }
+        }
+        return enabledSimCount;
+    }
+
+    public static int getSimFreeCount(Context context, int sub) {
+        String accountName = getAcount(sub).name;
+        int count = 0;
+
+        if (context == null) {
+            return 0;
+        }
+
+        Cursor queryCursor = context.getContentResolver().query(
+                RawContacts.CONTENT_URI,
+                new String[] {
+                    RawContacts._ID
+                },
+                RawContacts.ACCOUNT_NAME + " = '" + accountName + "' AND " + RawContacts.DELETED
+                        + " = 0", null, null);
+        if (queryCursor != null) {
+            try {
+                count = queryCursor.getCount();
+            } finally {
+                queryCursor.close();
+            }
+        }
+        return getAdnCount(sub) - count;
+    }
+
+    public static int getSpareAnrCount(int sub) {
+        int anrCount = 0;
+        long[] subId=SubscriptionManager.getSubId(sub);      
+         try {
+                IIccPhoneBook iccIpb = IIccPhoneBook.Stub.asInterface(ServiceManager
+                        .getService(PHONEBOOK));
+                 if (iccIpb != null) {
+                   if (subId != null
+                        && TelephonyManager.getDefault().isMultiSimEnabled()) {
+                    anrCount = iccIpb.getSpareEmailCountUsingSubId(subId[0]);
+                } else {
+                   anrCount = iccIpb.getSpareEmailCount();
+                 }
+            }           
+            } catch (RemoteException ex) {
+                // ignore it
+            } catch (SecurityException ex) {
+                Log.i(TAG, ex.toString());
+            } catch (Exception ex) {
+        }
+        if (DBG) {
+            Log.d(TAG, "getSpareAnrCount(" + sub + ") = " + anrCount);
+        }
+        return anrCount;
+    }
+
+    public static int getSpareEmailCount(int sub) {
+        int emailCount = 0;
+        long[] subId=SubscriptionManager.getSubId(sub);
+        try {
+                IIccPhoneBook iccIpb = IIccPhoneBook.Stub.asInterface(ServiceManager
+                        .getService(PHONEBOOK));
+                 if (iccIpb != null) {
+                if (subId != null
+                        && TelephonyManager.getDefault().isMultiSimEnabled()) {
+                    emailCount = iccIpb.getSpareEmailCountUsingSubId(subId[0]);
+                } else {
+                    emailCount = iccIpb.getSpareEmailCount();
+                 }
+                 }            
+            } catch (RemoteException ex) {
+                // ignore it
+            } catch (SecurityException ex) {
+                Log.i(TAG, ex.toString());
+            } catch (Exception ex) {
+        }
+        if (DBG) {
+            Log.d(TAG, "getSpareEmailCount(" + sub + ") = " + emailCount);
+        }
+        return emailCount;
+    }
+
+    private static boolean hasChinese(String name) {
+        return name != null && name.getBytes().length > name.length();
+    }
+
+    /**
+     * Get SIM card aliases name, which defined in Settings
+     */
+    public static String getMultiSimAliasesName(Context context, int subscription) {
+        if (context == null || subscription < 0) {
+            return null;
+        }
+        String name = "";
+        if (TelephonyManager.getDefault().isMultiSimEnabled()) {
+            name = Settings.System.getString(context.getContentResolver(),
+                    MULTI_SIM_NAME[subscription]);
+        }
+        if (TextUtils.isEmpty(name)) {
+            name = getSimAccountName(subscription);
+        }
+        return name;
+    }
+
+    /**
+     * Get SIM card icon index by subscription
+     */
+    public static int getCurrentSimIconIndex(Context context, int subscription) {
+        if (context == null || subscription < SimContactsConstants.SUB_1
+                || subscription >= TelephonyManager.getDefault().getPhoneCount()) {
+            return -1;
+        }
+
+        String simIconIndex = Settings.System.getString(context.getContentResolver(),
+                PREFERRED_SIM_ICON_INDEX);
+        if (TextUtils.isEmpty(simIconIndex)) {
+            return subscription;
+        } else {
+            String[] indexs = simIconIndex.split(",");
+            if (subscription >= indexs.length) {
+                return -1;
+            }
+            return Integer.parseInt(indexs[subscription]);
+        }
+    }
+
+    /**
+     * Get Network SPN name, e.g. China Unicom
+     */
+    public static String getNetworkSpnName(Context context, int subscription) {
+        TelephonyManager tm = (TelephonyManager)
+                context.getSystemService(Context.TELEPHONY_SERVICE);
+        String netSpnName = "";
+        netSpnName = tm.getNetworkOperatorName(subscription);
+        if (TextUtils.isEmpty(netSpnName)) {
+            // if could not get the operator name, use account name instead of
+            netSpnName = getSimAccountName(subscription);
+        }
+        return toUpperCaseFirstOne(netSpnName);
+    }
+
+    public static String toUpperCaseFirstOne(String s) {
+        if (Character.isUpperCase(s.charAt(0))) {
+            return s;
+        } else {
+            return (new StringBuilder()).append(Character.toUpperCase(s.charAt(0)))
+                    .append(s.substring(1)).toString();
+        }
+    }
+
+    /**
+     * Display IP call setting dialog
+     */
+    public static void showNoIPNumberDialog(final Context mContext, final int subscription) {
+        try {
+            new AlertDialog.Builder(mContext)
+                    .setTitle(R.string.no_ip_number)
+                    .setMessage(R.string.no_ip_number_on_sim_card)
+                    .setPositiveButton(R.string.set_ip_number,
+                            new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    setIPNumber(mContext, subscription);
+                                }
+                            }).setNegativeButton(android.R.string.cancel, null).show();
+        } catch (Exception e) {
+        }
+    }
+
+    /**
+     * Setting IP Call number
+     */
+    public static void setIPNumber(final Context mContext, final int subscription) {
+        try {
+            LayoutInflater mInflater = LayoutInflater.from(mContext);
+            View v = mInflater.inflate(R.layout.ip_prefix_dialog, null);
+            final EditText edit = (EditText) v.findViewById(R.id.ip_prefix_dialog_edit);
+            String ip_prefix = Settings.System.getString(mContext.getContentResolver(),
+                    IPCALL_PREFIX[subscription]);
+            edit.setText(ip_prefix);
+
+            new AlertDialog.Builder(mContext).setTitle(R.string.ipcall_dialog_title)
+                    .setIcon(android.R.drawable.ic_dialog_info).setView(v)
+                    .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            String ip_prefix = edit.getText().toString();
+                            Settings.System.putString(mContext.getContentResolver(),
+                                    IPCALL_PREFIX[subscription], ip_prefix);
+                        }
+                    }).setNegativeButton(android.R.string.cancel, null).show();
+        } catch (Exception e) {
+        }
+    }
+
+    /**
+     * Check one SIM card is enabled
+     */
+    public static boolean isMultiSimEnable(Context context, int slotId) {
+            if (Settings.System.getInt(context.getContentResolver(),
+                    Settings.Global.AIRPLANE_MODE_ON, 0) != 0
+                || TelephonyManager.SIM_STATE_READY != TelephonyManager
+                        .getDefault()
+                            .getSimState(slotId)) {
+                return false;
+            }
+            return true;
+    }
+
+    /**
+     * Get IP Call prefix
+     */
+    public static String getIPCallPrefix(Context context, int slot) {
+        String ipCallPrefix = "";
+        ipCallPrefix = Settings.System.getString(context.getContentResolver(),
+                IPCALL_PREFIX[slot]);
+        return ipCallPrefix;
+    }
+
+    public static PhoneAccountHandle getAccount(int slot) {
+        ComponentName serviceName = new ComponentName("com.android.phone",
+                "com.android.services.telephony.TelephonyConnectionService");
+        long[] subId = SubscriptionManager.getSubId(slot);
+        return new PhoneAccountHandle(serviceName, String.valueOf(subId[0]));
+    }
+
+    public static boolean shouldSearchCallLogsInSmartDial(Context context) {
+        return context.getResources().getBoolean(R.bool.config_smart_search);
+    }
+
+    public static boolean isCAndGOption(Context context) {
+        return context.getResources().getBoolean(R.bool.config_set_CG_option);
+    }
+
+    public static boolean isCAndGState(Context context) {
+        int SelectSmartfrenState = Settings.Global.getInt(context.getContentResolver(),
+                "smartfren_voice_sms_selection", 1);
+        return SelectSmartfrenState == 1 ? true : false;
+    }
+
 }

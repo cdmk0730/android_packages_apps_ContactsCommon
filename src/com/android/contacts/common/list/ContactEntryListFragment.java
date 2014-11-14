@@ -76,6 +76,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
     private static final String KEY_QUICK_CONTACT_ENABLED = "quickContactEnabled";
     private static final String KEY_ADJUST_SELECTION_BOUNDS_ENABLED =
             "adjustSelectionBoundsEnabled";
+    private static final String KEY_QUICK_CALL_BUTTON_ENABLED = "quickCallButtonEnabled";
     private static final String KEY_INCLUDE_PROFILE = "includeProfile";
     private static final String KEY_SEARCH_MODE = "searchMode";
     private static final String KEY_VISIBLE_SCROLLBAR_ENABLED = "visibleScrollbarEnabled";
@@ -101,6 +102,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
     private boolean mPhotoLoaderEnabled;
     private boolean mQuickContactEnabled = true;
     private boolean mAdjustSelectionBoundsEnabled = true;
+    private boolean mQuickCallButtonEnabled = false;
     private boolean mIncludeProfile;
     private boolean mSearchMode;
     private boolean mVisibleScrollbarEnabled;
@@ -242,6 +244,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
         outState.putBoolean(KEY_PHOTO_LOADER_ENABLED, mPhotoLoaderEnabled);
         outState.putBoolean(KEY_QUICK_CONTACT_ENABLED, mQuickContactEnabled);
         outState.putBoolean(KEY_ADJUST_SELECTION_BOUNDS_ENABLED, mAdjustSelectionBoundsEnabled);
+        outState.putBoolean(KEY_QUICK_CALL_BUTTON_ENABLED, mQuickCallButtonEnabled);
         outState.putBoolean(KEY_INCLUDE_PROFILE, mIncludeProfile);
         outState.putBoolean(KEY_SEARCH_MODE, mSearchMode);
         outState.putBoolean(KEY_VISIBLE_SCROLLBAR_ENABLED, mVisibleScrollbarEnabled);
@@ -283,6 +286,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
         mPhotoLoaderEnabled = savedState.getBoolean(KEY_PHOTO_LOADER_ENABLED);
         mQuickContactEnabled = savedState.getBoolean(KEY_QUICK_CONTACT_ENABLED);
         mAdjustSelectionBoundsEnabled = savedState.getBoolean(KEY_ADJUST_SELECTION_BOUNDS_ENABLED);
+        mQuickCallButtonEnabled = savedState.getBoolean(KEY_QUICK_CALL_BUTTON_ENABLED);
         mIncludeProfile = savedState.getBoolean(KEY_INCLUDE_PROFILE);
         mSearchMode = savedState.getBoolean(KEY_SEARCH_MODE);
         mVisibleScrollbarEnabled = savedState.getBoolean(KEY_VISIBLE_SCROLLBAR_ENABLED);
@@ -336,6 +340,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
 
         // Next time this method is called, we should start loading non-priority directories
         mLoadPriorityDirectoriesOnly = false;
+        mAdapter.notifyDataSetChanged();
     }
 
     @Override
@@ -395,6 +400,9 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
     protected void loadDirectoryPartition(int partitionIndex, DirectoryPartition partition) {
         Bundle args = new Bundle();
         args.putLong(DIRECTORY_ID_ARG_KEY, partition.getDirectoryId());
+        if (getLoaderManager().getLoader(partitionIndex) != null) {
+            getLoaderManager().destroyLoader(partitionIndex);
+        }
         getLoaderManager().restartLoader(partitionIndex, args, this);
     }
 
@@ -436,6 +444,11 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
     }
 
     public void onLoaderReset(Loader<Cursor> loader) {
+        if (loader.getId() >= 0) {
+            mAdapter.changeCursor(loader.getId(), null);
+        } else {
+            mAdapter.changeCursor(null);
+        }
     }
 
     protected void onPartitionLoaded(int partitionIndex, Cursor data) {
@@ -578,6 +591,10 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
 
     public void setAdjustSelectionBoundsEnabled(boolean flag) {
         mAdjustSelectionBoundsEnabled = flag;
+    }
+
+    public void setQuickCallButtonEnabled(boolean flag) {
+        this.mQuickCallButtonEnabled = flag;
     }
 
     public void setIncludeProfile(boolean flag) {
@@ -802,6 +819,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
 
         mAdapter.setQuickContactEnabled(mQuickContactEnabled);
         mAdapter.setAdjustSelectionBoundsEnabled(mAdjustSelectionBoundsEnabled);
+        mAdapter.setQuickCallButtonEnabled(mQuickCallButtonEnabled);
         mAdapter.setIncludeProfile(mIncludeProfile);
         mAdapter.setQueryString(mQueryString);
         mAdapter.setDirectorySearchMode(mDirectorySearchMode);
