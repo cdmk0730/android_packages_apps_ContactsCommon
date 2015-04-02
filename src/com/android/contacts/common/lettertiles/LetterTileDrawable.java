@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 The Android Open Source Project
+ * Copyright (C) 2015 The MoKee OpenSource Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +30,7 @@ import android.graphics.Paint.Align;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.mokee.utils.MoKeeUtils;
 import android.text.TextUtils;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -180,6 +182,22 @@ public class LetterTileDrawable extends Drawable {
             // offset
             canvas.drawText(sFirstChar, 0, 1, bounds.centerX(),
                     bounds.centerY() + mOffset * bounds.height() + sRect.height() / 2,
+                    sPaint);
+        } else if (mDisplayName != null && MoKeeUtils.isChineseLetter(mDisplayName.charAt(0))) {
+            // Draw letter/digit only if the first character is a chinese letter
+            // Draw letter or digit.
+            sFirstChar[0] = Character.toUpperCase(mDisplayName.charAt(0));
+
+            // Scale text by canvas bounds and user selected scaling factor
+            sPaint.setTextSize(mScale * sLetterToTileRatio * minDimension * 0.8f);
+            //sPaint.setTextSize(sTileLetterFontSize);
+            sPaint.getTextBounds(sFirstChar, 0, 1, sRect);
+            sPaint.setColor(sTileFontColor);
+
+            // Draw the letter in the canvas, vertically shifted up or down by the user-defined
+            // offset
+            canvas.drawText(sFirstChar, 0, 1, bounds.centerX(),
+                    bounds.centerY() * 0.9f + mOffset * bounds.height() + sRect.height() / 2,
                     sPaint);
         } else {
             // Draw the default image if there is no letter/digit to be drawn
