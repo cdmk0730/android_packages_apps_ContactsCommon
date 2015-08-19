@@ -84,9 +84,9 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
     private static final String KEY_SELECTION_VISIBLE = "selectionVisible";
     private static final String KEY_REQUEST = "request";
     private static final String KEY_DARK_THEME = "darkTheme";
-    private static final String KEY_SHOW_EMPTY_LIST_FOR_EMPTY_QUERY = "showEmptyListForEmptyQuery";
     private static final String KEY_LEGACY_COMPATIBILITY = "legacyCompatibility";
     private static final String KEY_DIRECTORY_RESULT_LIMIT = "directoryResultLimit";
+    private static final String KEY_SHOW_EMPTY_LIST_FOR_EMPTY_QUERY = "showEmptyListForEmptyQuery";
 
     private static final String DIRECTORY_ID_ARG_KEY = "directoryId";
 
